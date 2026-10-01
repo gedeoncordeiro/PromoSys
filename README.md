@@ -127,7 +127,11 @@ normal.
 docker compose --profile test up -d mysql-test
 cp .env.test.example .env.test
 node --env-file=.env.test src/database/migrate.js
+npm run test:points
 ```
+
+`npm run test:points` executa o teste de integração de crédito concorrente e
+idempotente. O teste cria e remove apenas os próprios dados no banco `promosys_test`.
 
 Para parar o serviço sem remover os dados do volume:
 
