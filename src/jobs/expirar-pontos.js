@@ -24,17 +24,24 @@ const LOTE_POR_RODADA = 200;
 /** Trava de segurança contra loop infinito. */
 const MAX_RODADAS = 500;
 
-async function expirarUmLote(loteId) {
+async function expirarUmLote(loteCandidato) {
   return db.withTransaction(async (conexao) => {
-    const lote = await pontosRepositorio.bloquearLotePorId(loteId, conexao);
+    // Mantém a mesma ordem dos débitos: primeiro cliente, depois lote.
+    const cliente = await clientesRepositorio.bloquearPorId(loteCandidato.cliente_id, conexao);
+    if (!cliente) return null;
+
+    const lote = await pontosRepositorio.bloquearLotePorId(loteCandidato.id, conexao);
 
     // Revalida dentro da transação: outro processo pode já ter expirado o lote.
-    if (!lote || Number(lote.pontos_disponiveis) <= 0) return null;
+    if (
+      !lote ||
+      Number(lote.cliente_id) !== Number(cliente.id) ||
+      Number(lote.pontos_disponiveis) <= 0
+    ) {
+      return null;
+    }
 
     const pontos = Number(lote.pontos_disponiveis);
-
-    const cliente = await clientesRepositorio.bloquearPorId(lote.cliente_id, conexao);
-    if (!cliente) return null;
 
     const saldoApos = Math.max(Number(cliente.pontos_saldo) - pontos, 0);
 
@@ -80,7 +87,7 @@ async function executar() {
     if (lotes.length === 0) break;
 
     for (const lote of lotes) {
-      const resultado = await expirarUmLote(lote.id);
+      const resultado = await expirarUmLote(lote);
 
       if (resultado) {
         totalLotes += 1;
