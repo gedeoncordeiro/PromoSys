@@ -157,6 +157,7 @@ Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 | `npm run pontos:expirar` | expira lotes vencidos (agende no cron) |
 | `npm run lint` / `lint:fix` | ESLint (flat config) |
 | `npm test` | `node:test` |
+| `npm run test:api` | testes HTTP via `app.inject()` (não exige MySQL) |
 
 ---
 

@@ -31,6 +31,8 @@ import routes from './routes/index.js';
 const LIMITE_CORPO_BYTES = 1 * 1024 * 1024; // 1 MiB
 
 export async function buildApp(opcoes = {}) {
+  const { databasePlugin: pluginBanco = databasePlugin, ...opcoesFastify } = opcoes;
+
   const app = Fastify({
     logger: loggerOptions,
     trustProxy: env.TRUST_PROXY,
@@ -47,7 +49,7 @@ export async function buildApp(opcoes = {}) {
       return typeof headerId === 'string' && headerId.length <= 128 ? headerId : randomUUID();
     },
 
-    ...opcoes,
+    ...opcoesFastify,
   });
 
   // Validação/serialização com Zod em todas as rotas (via fastify-type-provider-zod)
@@ -59,7 +61,7 @@ export async function buildApp(opcoes = {}) {
   app.setNotFoundHandler(notFoundHandler);
 
   await app.register(securityPlugin);
-  await app.register(databasePlugin);
+  await app.register(pluginBanco);
   await app.register(authPlugin);
   await app.register(docsPlugin);
 
