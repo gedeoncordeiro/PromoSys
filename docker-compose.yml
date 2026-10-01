@@ -27,6 +27,31 @@ services:
       timeout: 5s
       retries: 10
 
+  mysql-test:
+    image: mysql:8.4
+    container_name: promosys-mysql-test
+    profiles: ['test']
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      - --max-connections=100
+      - --innodb-buffer-pool-size=128M
+    environment:
+      MYSQL_ROOT_PASSWORD: root-test
+      MYSQL_DATABASE: promosys_test
+      MYSQL_USER: promosys_test
+      MYSQL_PASSWORD: promosys_test
+    ports:
+      - '127.0.0.1:3307:3306'
+    volumes:
+      - mysql-test-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-u', 'root', '-proot-test']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   adminer:
     image: adminer:4
     container_name: promosys-adminer
@@ -39,3 +64,4 @@ services:
 
 volumes:
   mysql-data:
+  mysql-test-data:

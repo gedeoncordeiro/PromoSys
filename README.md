@@ -117,6 +117,27 @@ npm run seed
 npm run dev        # http://localhost:3333/api/v1  ·  docs em http://localhost:3333/docs
 ```
 
+### Banco isolado de testes
+
+O MySQL de testes usa o perfil `test`, porta `3307` e volume `mysql-test-data`,
+separados do banco de desenvolvimento. Ele não é iniciado pelo `docker compose up`
+normal.
+
+```bash
+docker compose --profile test up -d mysql-test
+cp .env.test.example .env.test
+node --env-file=.env.test src/database/migrate.js
+```
+
+Para parar o serviço sem remover os dados do volume:
+
+```bash
+docker compose --profile test stop mysql-test
+```
+
+O arquivo `.env.test` é local e ignorado pelo Git. As credenciais de exemplo
+destinam-se apenas ao container local de testes.
+
 Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 
 | Perfil | E-mail | Senha | Unidade |
