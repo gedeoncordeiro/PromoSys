@@ -16,7 +16,7 @@
     "pontos:expirar": "node --env-file=.env src/jobs/expirar-pontos.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "node --test --env-file=.env tests/**/*.test.js"
+    "test": "node --test"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
