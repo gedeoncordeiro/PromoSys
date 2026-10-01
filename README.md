@@ -118,6 +118,23 @@ npm run seed
 npm run dev        # http://localhost:3333/api/v1  ·  docs em http://localhost:3333/docs
 ```
 
+### Frontend
+
+O painel React/Vite fica em `frontend/`. Com a API rodando na porta `3333`:
+
+```bash
+npm install --prefix frontend
+npm run dev --prefix frontend  # http://127.0.0.1:5173
+```
+
+Durante o desenvolvimento, o Vite encaminha `/api` para a API local. Em outra
+origem ou ambiente de produção, defina `VITE_API_URL` com o prefixo completo da
+API (por exemplo, `https://api.suaempresa.com/api/v1`). Para gerar o bundle:
+
+```bash
+npm run build --prefix frontend
+```
+
 ### Banco isolado de testes
 
 O MySQL de testes usa o perfil `test`, porta `3307` e volume `mysql-test-data`,
