@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS unidades (
   UNIQUE KEY uk_unidades_codigo (codigo),
   UNIQUE KEY uk_unidades_cnpj (cnpj),
   KEY idx_unidades_ativo (ativo)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- usuarios: operadores da API (PDV, gerência, auditoria)
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   KEY idx_usuarios_unidade (unidade_id),
   CONSTRAINT fk_usuarios_unidade FOREIGN KEY (unidade_id) REFERENCES unidades (id)
     ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- refresh_tokens: sessões de longa duração (rotativas)
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   KEY idx_refresh_expiracao (expira_em),
   CONSTRAINT fk_refresh_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
     ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- clientes: participantes do programa
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   CONSTRAINT chk_clientes_saldo_nao_negativo CHECK (pontos_saldo >= 0),
   CONSTRAINT fk_clientes_unidade FOREIGN KEY (unidade_cadastro_id) REFERENCES unidades (id)
     ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- consentimentos: trilha LGPD (histórico de aceites por finalidade)
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS consentimentos (
   KEY idx_consentimentos_cliente (cliente_id, finalidade, criado_em),
   CONSTRAINT fk_consentimentos_cliente FOREIGN KEY (cliente_id) REFERENCES clientes (id)
     ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- regras_pontuacao: quantos pontos por real, validade e mínimo de compra
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS regras_pontuacao (
   CONSTRAINT fk_regras_unidade FOREIGN KEY (unidade_id) REFERENCES unidades (id)
     ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT chk_regras_pontos_positivos CHECK (pontos_por_real > 0)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- recompensas: catálogo de prêmios
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS recompensas (
   KEY idx_recompensas_catalogo (ativo, pontos_custo),
   CONSTRAINT chk_recompensas_custo_positivo CHECK (pontos_custo > 0),
   CONSTRAINT chk_recompensas_estoque_nao_negativo CHECK (estoque IS NULL OR estoque >= 0)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- transacoes_pontos: LIVRO RAZÃO (append-only) de todas as movimentações
@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS transacoes_pontos (
     ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT fk_transacoes_estorno FOREIGN KEY (estorno_de_transacao_id) REFERENCES transacoes_pontos (id)
     ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- lotes_pontos: validade dos pontos (consumo FIFO pelo que vence primeiro)
@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS lotes_pontos (
     ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_lotes_transacao FOREIGN KEY (transacao_id) REFERENCES transacoes_pontos (id)
     ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- resgates: comprovantes de resgate (código apresentado no balcão)
@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS resgates (
     ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT fk_resgates_transacao FOREIGN KEY (transacao_id) REFERENCES transacoes_pontos (id)
     ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
 -- audit_log: trilha de auditoria (quem fez o quê, quando e de onde)
@@ -282,4 +282,4 @@ CREATE TABLE IF NOT EXISTS audit_log (
   KEY idx_audit_entidade (entidade, entidade_id, criado_em),
   KEY idx_audit_usuario (usuario_id, criado_em),
   KEY idx_audit_acao (acao, criado_em)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

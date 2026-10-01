@@ -159,6 +159,10 @@ O usuário configurado precisa ter permissão `CREATE DATABASE` para criar o
 schema. Em seguida, precisa de permissões para criar tabelas e executar as
 operações usadas pela aplicação. O script não remove databases existentes.
 
+Para criar as tabelas manualmente no phpMyAdmin, selecione o database desejado
+(por exemplo, `promosysdb`) e importe `src/database/migrations/001_init.sql`.
+Essa migração usa `utf8mb4_unicode_ci`, compatível com MySQL e MariaDB.
+
 Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 
 | Perfil | E-mail | Senha | Unidade |
