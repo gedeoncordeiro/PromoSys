@@ -11,9 +11,11 @@
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.js",
     "start": "node --env-file=.env src/server.js",
+    "db:create": "node --env-file=.env src/database/create-database.js",
     "migrate": "node --env-file=.env src/database/migrate.js",
     "seed": "node --env-file=.env src/database/seed.js",
     "pontos:expirar": "node --env-file=.env src/jobs/expirar-pontos.js",
+    "test:db:create": "node --env-file=.env.test src/database/create-database.js",
     "test:api": "node --env-file=.env.test.example --test tests/api.test.js",
     "test:points": "node --env-file=.env.test --test tests/points.integration.test.js",
     "perf:http": "node scripts/benchmark-http.js",

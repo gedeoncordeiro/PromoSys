@@ -109,7 +109,8 @@ docker compose up -d
 cp .env.example .env
 openssl rand -base64 48   # cole em JWT_SECRET e JWT_REFRESH_SECRET
 
-# 4) Schema + dados de exemplo
+# 4) Cria o database, aplica schema e dados de exemplo
+npm run db:create
 npm run migrate
 npm run seed
 
@@ -142,6 +143,22 @@ docker compose --profile test stop mysql-test
 O arquivo `.env.test` é local e ignorado pelo Git. As credenciais de exemplo
 destinam-se apenas ao container local de testes.
 
+No XAMPP, inicie o MySQL/MariaDB e ajuste `DB_HOST`, `DB_PORT`, `DB_USER`,
+`DB_PASSWORD` e `DB_NAME` no `.env` ou `.env.test`. Para criar o database de
+testes usando essa configuração:
+
+```bash
+cp .env.test.example .env.test
+# Ajuste .env.test para a porta e o usuário configurados no XAMPP.
+npm run test:db:create
+node --env-file=.env.test src/database/migrate.js
+npm run test:points
+```
+
+O usuário configurado precisa ter permissão `CREATE DATABASE` para criar o
+schema. Em seguida, precisa de permissões para criar tabelas e executar as
+operações usadas pela aplicação. O script não remove databases existentes.
+
 Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 
 | Perfil | E-mail | Senha | Unidade |
@@ -156,8 +173,10 @@ Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 | --- | --- |
 | `npm run dev` | sobe a API com `--watch` (reload automático) |
 | `npm start` | sobe a API em modo produção |
+| `npm run db:create` | cria o database definido em `.env`, se ainda não existir |
 | `npm run migrate` | aplica migrações pendentes |
 | `npm run seed` | popula dados de desenvolvimento |
+| `npm run test:db:create` | cria o database definido em `.env.test`, se ainda não existir |
 | `npm run pontos:expirar` | expira lotes vencidos (agende no cron) |
 | `npm run lint` / `lint:fix` | ESLint (flat config) |
 | `npm test` | `node:test` |
