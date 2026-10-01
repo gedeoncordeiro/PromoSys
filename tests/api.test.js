@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const habilitado = process.env.PROMOSYS_API_TESTS === '1';
+const docsHabilitados = ['true', '1'].includes(process.env.ENABLE_DOCS);
 
 test('contratos HTTP básicos da API', { skip: !habilitado }, async (t) => {
   const { buildApp } = await import('../src/app.js');
@@ -75,4 +76,13 @@ test('contratos HTTP básicos da API', { skip: !habilitado }, async (t) => {
     assert.equal(resposta.statusCode, 401);
     assert.equal(resposta.json().error.code, 'UNAUTHORIZED');
   });
+
+  if (docsHabilitados) {
+    await t.test('Swagger publica o documento OpenAPI', async () => {
+      const resposta = await app.inject({ method: 'GET', url: '/docs/json' });
+
+      assert.equal(resposta.statusCode, 200);
+      assert.equal(resposta.json().openapi, '3.0.3');
+    });
+  }
 });
