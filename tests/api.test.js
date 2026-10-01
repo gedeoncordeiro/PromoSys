@@ -47,4 +47,32 @@ test('contratos HTTP básicos da API', { skip: !habilitado }, async (t) => {
     assert.equal(resposta.statusCode, 401);
     assert.equal(resposta.json().error.code, 'UNAUTHORIZED');
   });
+
+  await t.test('rejeita refresh token em rota que exige access token', async () => {
+    const token = app.jwt.sign({ typ: 'refresh' }, { subject: '1' });
+    const resposta = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    assert.equal(resposta.statusCode, 401);
+    assert.equal(resposta.json().error.code, 'UNAUTHORIZED');
+  });
+
+  await t.test('rejeita access token expirado', async () => {
+    const expiradoEm = Math.floor(Date.now() / 1000) - 1;
+    const token = app.jwt.sign(
+      { typ: 'access', perfil: 'ADMIN', exp: expiradoEm },
+      { subject: '1' },
+    );
+    const resposta = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    assert.equal(resposta.statusCode, 401);
+    assert.equal(resposta.json().error.code, 'UNAUTHORIZED');
+  });
 });
