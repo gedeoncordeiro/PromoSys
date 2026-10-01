@@ -162,6 +162,15 @@ Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 | `npm run lint` / `lint:fix` | ESLint (flat config) |
 | `npm test` | `node:test` |
 | `npm run test:api` | testes HTTP via `app.inject()` (não exige MySQL) |
+| `npm run perf:http` | benchmark HTTP com Autocannon |
+
+### Benchmark HTTP
+
+Com a API em execução, `npm run perf:http` mede `/health/live` por 30 segundos,
+com 20 conexões concorrentes. URL, concorrência e duração podem ser ajustadas
+por `PERF_URL`, `PERF_CONNECTIONS` e `PERF_DURATION`. O resultado inclui taxa de
+requisições, latências percentis, erros e timeouts; compare somente execuções no
+mesmo ambiente e sob condições equivalentes.
 
 ---
 
