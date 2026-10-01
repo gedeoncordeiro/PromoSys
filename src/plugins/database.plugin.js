@@ -8,7 +8,7 @@
  */
 import fp from 'fastify-plugin';
 import { db } from '../core/database/pool.js';
-import { env } from '../../config/env.js';
+import { env } from '../config/env.js';
 
 async function databasePlugin(app) {
   app.decorate('db', db);

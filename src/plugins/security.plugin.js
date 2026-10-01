@@ -10,7 +10,7 @@ import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
-import { env } from '../../config/env.js';
+import { env } from '../config/env.js';
 
 async function securityPlugin(app) {
   // Helpers HTTP (httpErrors.*) com semântica correta.
