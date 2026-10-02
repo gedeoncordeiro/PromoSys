@@ -24,6 +24,62 @@ picos em datas promocionais e tolerância zero a saldo de pontos inconsistente.
 
 ---
 
+## Requisitos
+
+- Node.js 20.11+
+- npm
+- Docker + Docker Compose
+- Git
+
+## Início rápido
+
+```bash
+# 1) Instale as dependências do backend
+npm install
+
+# 2) Crie o ambiente local
+cp .env.example .env
+# ajuste os segredos JWT e a conexão com o MySQL antes de subir a API
+
+# 3) Inicie o banco de desenvolvimento
+docker compose up -d
+
+# 4) Crie o banco, aplique as migrações e popular dados base
+npm run db:create
+npm run migrate
+npm run seed
+
+# 5) Suba a API
+npm run dev
+```
+
+A API fica disponível em:
+
+- API: http://localhost:3333/api/v1
+- Health: http://localhost:3333/health/live
+- Swagger/OpenAPI: http://localhost:3333/docs
+
+### Frontend em desenvolvimento
+
+```bash
+npm install --prefix frontend
+npm run dev --prefix frontend
+```
+
+A aplicação web fica em:
+
+- Frontend: http://127.0.0.1:5173
+
+### Verificação rápida
+
+```bash
+curl http://localhost:3333/health/live
+npm test -- --test-reporter=spec
+npm run build --prefix frontend
+```
+
+---
+
 ## Árvore de diretórios
 
 ```
