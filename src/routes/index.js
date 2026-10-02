@@ -11,6 +11,7 @@ import authRoutes from '../modules/auth/auth.routes.js';
 import clientesRoutes from '../modules/clientes/clientes.routes.js';
 import pontosRoutes from '../modules/pontos/pontos.routes.js';
 import recompensasRoutes from '../modules/recompensas/recompensas.routes.js';
+import relatoriosRoutes from '../modules/relatorios/relatorios.routes.js';
 
 /** @param {import('fastify').FastifyInstance} app */
 export default async function routes(app) {
@@ -22,4 +23,5 @@ export default async function routes(app) {
   await app.register(clientesRoutes, { prefix: '/clientes' });
   await app.register(pontosRoutes, { prefix: '/pontos' });
   await app.register(recompensasRoutes); // expõe /recompensas e /resgates
+  await app.register(relatoriosRoutes, { prefix: '/relatorios' });
 }

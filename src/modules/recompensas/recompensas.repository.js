@@ -214,7 +214,7 @@ export function contarResgatesDoCliente(clienteId, recompensaId, executor) {
   );
 }
 
-export async function listarResgates({ clienteId, unidadeId, status, limit, offset }, executor) {
+export async function listarResgates({ clienteId, unidadeId, status, busca, de, ate, limit, offset }, executor) {
   const filtros = [];
   const params = [];
 
@@ -230,7 +230,19 @@ export async function listarResgates({ clienteId, unidadeId, status, limit, offs
     filtros.push('g.status = ?');
     params.push(status);
   }
-
+  if (busca) {
+    filtros.push('(g.codigo LIKE ? OR c.nome LIKE ? OR c.cpf LIKE ? OR rc.nome LIKE ?)');
+    const termo = padraoLike(busca);
+    params.push(termo, termo, termo, termo);
+  }
+  if (de) {
+    filtros.push('g.criado_em >= ?');
+    params.push(`${de} 00:00:00`);
+  }
+  if (ate) {
+    filtros.push('g.criado_em <= ?');
+    params.push(`${ate} 23:59:59`);
+  }
   const whereSql = filtros.length > 0 ? filtros.join(' AND ') : '1 = 1';
 
   const [itens, total] = await Promise.all([
@@ -242,7 +254,7 @@ export async function listarResgates({ clienteId, unidadeId, status, limit, offs
       params,
       executor,
     ),
-    db.queryOne(`SELECT COUNT(*) AS total FROM resgates g WHERE ${whereSql}`, params, executor),
+    db.queryOne(`SELECT COUNT(*) AS total ${ORIGEM_RESGATE} WHERE ${whereSql}`, params, executor),
   ]);
 
   return { itens, total: total?.total ?? 0 };

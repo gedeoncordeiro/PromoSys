@@ -28,7 +28,7 @@ picos em datas promocionais e tolerância zero a saldo de pontos inconsistente.
 
 - Node.js 20.11+
 - npm
-- Docker + Docker Compose
+- MySQL/MariaDB iniciado pelo XAMPP
 - Git
 
 ## Início rápido
@@ -41,8 +41,7 @@ npm install
 cp .env.example .env
 # ajuste os segredos JWT e a conexão com o MySQL antes de subir a API
 
-# 3) Inicie o banco de desenvolvimento
-docker compose up -d
+# 3) Inicie o MySQL no painel do XAMPP
 
 # 4) Crie o banco, aplique as migrações e popular dados base
 npm run db:create
@@ -56,7 +55,7 @@ npm run dev
 A API fica disponível em:
 
 - API: http://localhost:3333/api/v1
-- Health: http://localhost:3333/health/live
+- Health: http://localhost:3333/api/v1/health/live
 - Swagger/OpenAPI: http://localhost:3333/docs
 
 ### Frontend em desenvolvimento
@@ -69,6 +68,19 @@ npm run dev --prefix frontend
 A aplicação web fica em:
 
 - Frontend: http://127.0.0.1:5173
+
+### Relatórios e filtros
+
+Os relatórios são alimentados pelo banco local e respeitam o escopo de unidade
+do perfil autenticado. As vendas exibidas correspondem às compras registradas
+no livro-razão de pontos; não representam o faturamento completo do sistema de
+caixa externo.
+
+- `GET /api/v1/relatorios/financeiro`: totais e movimentos com filtros `de`, `ate`, `unidadeId`, `tipo`, `origem` e `busca`.
+- `GET /api/v1/relatorios/pontos-clientes`: saldo atual com filtros `busca`, `nivel`, `ativo`, `pontosMin`, `pontosMax`, `ordenarPor` e `unidadeId`.
+- `GET /api/v1/relatorios/unidades`: vendas identificadas, pontos por compra, transações e novos cadastros, filtrados por período/unidade.
+- `GET /api/v1/clientes`: inclui filtros por nível, unidade de cadastro, cidade, UF, faixa de pontos e ordenação.
+- `GET /api/v1/resgates`: inclui busca por código/cliente/recompensa e intervalo de datas; perfis de loja ficam limitados à própria unidade.
 
 ### Verificação rápida
 

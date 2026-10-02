@@ -43,6 +43,9 @@ export const listarResgatesQuerySchema = z.object({
   clienteId: z.coerce.number().int().positive().optional(),
   unidadeId: z.coerce.number().int().positive().optional(),
   status: z.enum(Object.values(STATUS_RESGATE)).optional(),
+  busca: z.string().trim().min(2).max(120).optional(),
+  de: dataSchema.optional(),
+  ate: dataSchema.optional(),
   limit: z.coerce.number().int().min(1).max(PAGINACAO.LIMITE_MAXIMO).default(PAGINACAO.LIMITE_PADRAO),
   offset: z.coerce.number().int().min(0).default(0),
 });

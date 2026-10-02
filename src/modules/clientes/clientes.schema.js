@@ -30,6 +30,15 @@ export const listarClientesQuerySchema = z.object({
   nivel: z.enum(['BRONZE', 'PRATA', 'OURO', 'DIAMANTE']).optional(),
   limit: z.coerce.number().int().min(1).max(PAGINACAO.LIMITE_MAXIMO).default(PAGINACAO.LIMITE_PADRAO),
   offset: z.coerce.number().int().min(0).default(0),
+  unidadeCadastroId: z.coerce.number().int().positive().optional(),
+  cidade: z.string().trim().min(2).max(80).optional(),
+  uf: z.string().trim().length(2).toUpperCase().optional(),
+  pontosMin: z.coerce.number().int().min(0).optional(),
+  pontosMax: z.coerce.number().int().min(0).optional(),
+  ordenarPor: z.enum(['nome', 'saldo_desc', 'saldo_asc', 'visita_desc']).default('nome'),
+}).refine((query) => query.pontosMin === undefined || query.pontosMax === undefined || query.pontosMin <= query.pontosMax, {
+  message: 'O saldo mínimo não pode superar o saldo máximo.',
+  path: ['pontosMax'],
 });
 
 export const cpfParamSchema = z.object({

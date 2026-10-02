@@ -77,6 +77,7 @@ export default async function clientesRoutes(app) {
         tags: ['Clientes'],
         summary: 'Exporta a base ativa de clientes em CSV',
         security: [{ bearerAuth: [] }],
+        querystring: listarClientesQuerySchema,
       },
     },
     controller.exportarCsv,

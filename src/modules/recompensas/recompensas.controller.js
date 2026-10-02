@@ -43,7 +43,7 @@ export async function resgatar(request, reply) {
 
 /** GET /resgates */
 export async function listarResgates(request, reply) {
-  const { itens, meta } = await recompensaService.listarResgates(request.query);
+  const { itens, meta } = await recompensaService.listarResgates(request.query, request.auth);
   return reply.status(200).send({ data: itens, meta });
 }
 

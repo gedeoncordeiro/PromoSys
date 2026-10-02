@@ -30,7 +30,7 @@ export async function obterPorCpf(request, reply) {
 
 /** GET /clientes/export */
 export async function exportarCsv(request, reply) {
-  const csv = await clienteService.exportarCsv();
+  const csv = await clienteService.exportarCsv(request.query);
   return reply
     .header('Content-Type', 'text/csv; charset=utf-8')
     .header('Content-Disposition', 'attachment; filename="clientes.csv"')

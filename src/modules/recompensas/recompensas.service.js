@@ -15,9 +15,10 @@ import { registrarAuditoria } from '../../core/audit.js';
 import {
   BusinessRuleError,
   ConflictError,
+  ForbiddenError,
   NotFoundError,
 } from '../../core/errors/app-error.js';
-import { ORIGENS_PONTOS, STATUS_RESGATE, TIPOS_TRANSACAO } from '../../config/constants.js';
+import { ORIGENS_PONTOS, PERFIS, STATUS_RESGATE, TIPOS_TRANSACAO } from '../../config/constants.js';
 import { normalizarPaginacao, metaPaginacao } from '../../utils/pagination.js';
 import { gerarCodigoResgate } from '../../utils/token.js';
 
@@ -234,9 +235,21 @@ export async function confirmarRetirada(resgateId, contexto = {}) {
   return { ...repositorio.mapearResgate(atualizado), jaConfirmado: affectedRows === 0 };
 }
 
-export async function listarResgates(filtros) {
-  const { limit, offset } = normalizarPaginacao(filtros);
-  const { itens, total } = await repositorio.listarResgates({ ...filtros, limit, offset });
+export async function listarResgates(filtros, auth = {}) {
+  let filtrosEscopados = filtros;
+  if (![PERFIS.ADMIN, PERFIS.AUDITOR].includes(auth.perfil)) {
+    const unidadeId = Number(auth.unidadeId);
+    if (!Number.isInteger(unidadeId) || unidadeId <= 0) {
+      throw new ForbiddenError('Seu usuário precisa estar vinculado a uma unidade para consultar resgates.');
+    }
+    if (filtros.unidadeId && Number(filtros.unidadeId) !== unidadeId) {
+      throw new ForbiddenError('Você só pode consultar resgates da unidade vinculada ao seu usuário.');
+    }
+    filtrosEscopados = { ...filtros, unidadeId };
+  }
+
+  const { limit, offset } = normalizarPaginacao(filtrosEscopados);
+  const { itens, total } = await repositorio.listarResgates({ ...filtrosEscopados, limit, offset });
 
   return {
     itens: itens.map(repositorio.mapearResgate),

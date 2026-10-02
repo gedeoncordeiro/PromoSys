@@ -94,8 +94,8 @@ function escaparCsv(valor) {
   return `"${texto}"`;
 }
 
-export async function exportarCsv() {
-  const { itens } = await repositorio.listar({ limit: 5000, offset: 0 });
+export async function exportarCsv(filtros = {}) {
+  const { itens } = await repositorio.listar({ ...filtros, limit: 5000, offset: 0 });
   const clientes = itens.map(repositorio.mapearCliente);
 
   const cabecalho = ['nome', 'cpf', 'email', 'telefone', 'cidade', 'uf', 'pontosSaldo', 'nivel', 'ativo', 'ultimaVisitaEm', 'unidadeCadastroNome'];

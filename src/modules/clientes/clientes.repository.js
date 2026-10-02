@@ -70,7 +70,7 @@ export function bloquearPorId(clienteId, executor) {
   );
 }
 
-export async function listar({ busca, ativo, nivel, limit, offset }, executor) {
+export async function listar({ busca, ativo, nivel, unidadeCadastroId, cidade, uf, pontosMin, pontosMax, ordenarPor, limit, offset }, executor) {
   const filtros = ['1 = 1'];
   const params = [];
 
@@ -84,6 +84,31 @@ export async function listar({ busca, ativo, nivel, limit, offset }, executor) {
     params.push(nivel);
   }
 
+  if (unidadeCadastroId) {
+    filtros.push('c.unidade_cadastro_id = ?');
+    params.push(unidadeCadastroId);
+  }
+
+  if (cidade) {
+    filtros.push('c.cidade LIKE ?');
+    params.push(padraoLike(cidade));
+  }
+
+  if (uf) {
+    filtros.push('c.uf = ?');
+    params.push(uf);
+  }
+
+  if (pontosMin !== undefined) {
+    filtros.push('c.pontos_saldo >= ?');
+    params.push(pontosMin);
+  }
+
+  if (pontosMax !== undefined) {
+    filtros.push('c.pontos_saldo <= ?');
+    params.push(pontosMax);
+  }
+
   if (busca) {
     filtros.push('(c.nome LIKE ? OR c.cpf LIKE ? OR c.telefone LIKE ?)');
     const termo = padraoLike(busca);
@@ -91,12 +116,17 @@ export async function listar({ busca, ativo, nivel, limit, offset }, executor) {
   }
 
   const whereSql = filtros.join(' AND ');
-
+  const orderSql = {
+    nome: 'c.nome ASC',
+    saldo_desc: 'c.pontos_saldo DESC, c.nome ASC',
+    saldo_asc: 'c.pontos_saldo ASC, c.nome ASC',
+    visita_desc: 'c.ultima_visita_em DESC, c.nome ASC',
+  }[ordenarPor ?? 'nome'];
   const [itens, total] = await Promise.all([
     db.query(
       `SELECT ${COLUNAS_CLIENTE} ${ORIGEM}
         WHERE ${whereSql}
-        ORDER BY c.nome ASC
+        ORDER BY ${orderSql}
         ${limitOffsetSql(limit, offset)}`,
       params,
       executor,
