@@ -11,6 +11,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   Clock3,
+  Download,
   Gift,
   LayoutDashboard,
   LoaderCircle,
@@ -372,8 +373,41 @@ function ClientsPage({ notify, user }: { notify: (notice: { message: string; kin
   const [createOpen, setCreateOpen] = useState(false)
   const [selected, setSelected] = useState<Client | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [exporting, setExporting] = useState(false)
   const pageSize = 20
   const canCreate = ['ADMIN', 'GERENTE', 'OPERADOR'].includes(user.perfil)
+
+  async function exportCsv() {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams({ limit: '5000', ativo: String(activeOnly) })
+      if (search.trim().length >= 2) params.set('busca', search.trim())
+
+      const response = await fetch(`/api/v1/clientes/export?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${getAccessToken()}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error('Não foi possível exportar a lista de clientes.')
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `clientes-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      notify({ message: 'Lista de clientes exportada em CSV.', kind: 'success' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Não foi possível exportar os clientes.'
+      notify({ message, kind: 'error' })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -404,7 +438,7 @@ function ClientsPage({ notify, user }: { notify: (notice: { message: string; kin
   return (
     <section className="page page-enter">
       <div className="page-heading"><div><div className="eyebrow"><span /> RELACIONAMENTO</div><h1>Clientes</h1><p>Encontre pessoas do clube e acompanhe seus pontos.</p></div>{canCreate ? <button className="button button-primary" onClick={() => setCreateOpen(true)}><Plus size={17} /> Novo cliente</button> : null}</div>
-      <div className="list-toolbar"><div className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setOffset(0) }} placeholder="Buscar por nome, CPF ou telefone" aria-label="Buscar clientes" /><kbd>⌘ K</kbd></div><label className="toggle-filter"><input type="checkbox" checked={activeOnly} onChange={(event) => { setActiveOnly(event.target.checked); setOffset(0) }} /><span className="toggle-track" /><span>Somente ativos</span></label><span className="toolbar-total">{clients ? `${formatNumber(clients.meta.total)} clientes` : '—'}</span></div>
+      <div className="list-toolbar"><div className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setOffset(0) }} placeholder="Buscar por nome, CPF ou telefone" aria-label="Buscar clientes" /><kbd>⌘ K</kbd></div><label className="toggle-filter"><input type="checkbox" checked={activeOnly} onChange={(event) => { setActiveOnly(event.target.checked); setOffset(0) }} /><span className="toggle-track" /><span>Somente ativos</span></label><div className="toolbar-actions"><button className="button button-outline button-small" onClick={() => void exportCsv()} disabled={exporting || loading}>{exporting ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />} {exporting ? 'Exportando...' : 'Exportar CSV'}</button><span className="toolbar-total">{clients ? `${formatNumber(clients.meta.total)} clientes` : '—'}</span></div></div>
       {error ? <InlineError message={error} onRetry={() => setRefreshKey((value) => value + 1)} /> : null}
       <section className="panel table-panel">
         {loading ? <TableLoading /> : clients?.data.length ? <div className="table-scroll"><table className="clients-table"><thead><tr><th>CLIENTE</th><th>CPF</th><th>CELULAR</th><th>NÍVEL</th><th>SALDO</th><th>ÚLTIMA VISITA</th><th /></tr></thead><tbody>{clients.data.map((client) => <tr key={client.id} onClick={() => setSelected(client)} className="clickable-row"><td><span className="table-person"><span className={`client-avatar avatar-${client.nivel.toLowerCase()}`}>{initials(client.nome)}</span><span className="person-lines"><strong>{client.nome}</strong><small>{client.email ?? 'Sem e-mail cadastrado'}</small></span></span></td><td className="muted-cell">{formatCpf(client.cpf)}</td><td>{client.telefone ?? '—'}</td><td><LevelBadge level={client.nivel} /></td><td><strong className="points-cell">{formatNumber(client.pontosSaldo)} <small>pts</small></strong></td><td>{formatDate(client.ultimaVisitaEm)}</td><td><ArrowUpRight size={15} className="row-open-icon" /></td></tr>)}</tbody></table></div> : <EmptyState icon={<UsersRound size={22} />} title={search ? 'Nenhum cliente encontrado' : 'Sua base começa aqui'} description={search ? 'Tente buscar por outro nome, CPF ou telefone.' : 'Cadastre o primeiro cliente para iniciar o relacionamento.'} action={!search && canCreate ? <button className="button button-primary button-small" onClick={() => setCreateOpen(true)}><Plus size={15} /> Cadastrar cliente</button> : undefined} />}

@@ -57,6 +57,7 @@ const OPCOES_POOL = {
 
 class Database {
   #pool;
+  #closingPromise = null;
 
   constructor() {
     this.#pool = mysql.createPool(OPCOES_POOL);
@@ -167,7 +168,22 @@ class Database {
 
   /** Encerra o pool — chamado no shutdown gracioso (hook onClose do Fastify). */
   async close() {
-    await this.#pool.end();
+    if (this.#closingPromise) {
+      return this.#closingPromise;
+    }
+
+    const poolFechado = this.#pool?._closed === true || this.#pool?.pool?._closed === true;
+
+    if (!this.#pool || poolFechado) {
+      return;
+    }
+
+    this.#closingPromise = this.#pool.end();
+    try {
+      await this.#closingPromise;
+    } finally {
+      this.#closingPromise = null;
+    }
   }
 }
 

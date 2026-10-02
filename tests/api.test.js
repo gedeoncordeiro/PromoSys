@@ -7,7 +7,7 @@ const docsHabilitados = ['true', '1'].includes(process.env.ENABLE_DOCS);
 test('contratos HTTP básicos da API', { skip: !habilitado }, async (t) => {
   const { buildApp } = await import('../src/app.js');
   const { db } = await import('../src/core/database/pool.js');
-  const app = await buildApp({ databasePlugin: async () => {}, logger: false });
+  const app = await buildApp({ logger: false });
 
   await app.ready();
   t.after(async () => {
@@ -75,6 +75,71 @@ test('contratos HTTP básicos da API', { skip: !habilitado }, async (t) => {
 
     assert.equal(resposta.statusCode, 401);
     assert.equal(resposta.json().error.code, 'UNAUTHORIZED');
+  });
+
+  await t.test('perfil sem permissão é rejeitado em rota de escrita', async () => {
+    const token = app.jwt.sign(
+      {
+        typ: 'access',
+        sub: '2',
+        perfil: 'OPERADOR',
+        unidadeId: 1,
+        exp: Math.floor(Date.now() / 1000) + 600,
+      },
+      { subject: '2' },
+    );
+    const resposta = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/clientes/1',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { nome: 'Cliente bloqueado' },
+    });
+
+    assert.equal(resposta.statusCode, 403);
+    assert.equal(resposta.json().error.code, 'FORBIDDEN');
+  });
+
+  await t.test('operador precisa operar na unidade correta', async () => {
+    const token = app.jwt.sign(
+      {
+        typ: 'access',
+        sub: '2',
+        perfil: 'OPERADOR',
+        unidadeId: 1,
+        exp: Math.floor(Date.now() / 1000) + 600,
+      },
+      { subject: '2' },
+    );
+    const resposta = await app.inject({
+      method: 'POST',
+      url: '/api/v1/recompensas/1/resgates',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { clienteId: 1, unidadeId: 2 },
+    });
+
+    assert.equal(resposta.statusCode, 403);
+    assert.equal(resposta.json().error.code, 'FORBIDDEN');
+  });
+
+  await t.test('exporta clientes em CSV para perfis autorizados', async () => {
+    const token = app.jwt.sign(
+      {
+        typ: 'access',
+        sub: '1',
+        perfil: 'ADMIN',
+        exp: Math.floor(Date.now() / 1000) + 600,
+      },
+      { subject: '1' },
+    );
+    const resposta = await app.inject({
+      method: 'GET',
+      url: '/api/v1/clientes/export',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    assert.equal(resposta.statusCode, 200);
+    assert.match(resposta.headers['content-type'], /text\/csv/i);
+    assert.match(resposta.body, /nome,cpf,email/i);
   });
 
   if (docsHabilitados) {

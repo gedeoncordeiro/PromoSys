@@ -152,20 +152,29 @@ PromoSys/
 
 ---
 
-## Como rodar
+## Como rodar no XAMPP
+
+> Este projeto foi pensado para rodar com o MySQL/MariaDB já iniciado no XAMPP, sem Docker.
 
 ```bash
 # 1) Dependências
 npm install
 
-# 2) Banco de dados de desenvolvimento (MySQL 8 + Adminer em :8080)
-docker compose up -d
-
-# 3) Variáveis de ambiente (gere segredos reais)
+# 2) Variáveis de ambiente
 cp .env.example .env
-openssl rand -base64 48   # cole em JWT_SECRET e JWT_REFRESH_SECRET
+# Ajuste no .env:
+#   DB_HOST=127.0.0.1
+#   DB_PORT=3306
+#   DB_USER=root
+#   DB_PASSWORD=
+#   DB_NAME=promosysdb
+# e gere segredos fortes para JWT_SECRET e JWT_REFRESH_SECRET
+# openssl rand -base64 48
 
-# 4) Cria o database, aplica schema e dados de exemplo
+# 3) Inicie o MySQL e o Apache no XAMPP
+# Lembre-se de ativar o módulo MySQL antes de continuar.
+
+# 4) Cria o banco, aplica schema e dados de exemplo
 npm run db:create
 npm run migrate
 npm run seed
@@ -173,6 +182,8 @@ npm run seed
 # 5) Subir a API
 npm run dev        # http://localhost:3333/api/v1  ·  docs em http://localhost:3333/docs
 ```
+
+Se o seu XAMPP usa outro usuário/senha, ajuste também os campos `DB_USER`, `DB_PASSWORD` e `DB_NAME` no arquivo `.env` antes de rodar os comandos.
 
 ### Frontend
 
@@ -191,15 +202,16 @@ API (por exemplo, `https://api.suaempresa.com/api/v1`). Para gerar o bundle:
 npm run build --prefix frontend
 ```
 
-### Banco isolado de testes
+### Banco de testes no XAMPP
 
-O MySQL de testes usa o perfil `test`, porta `3307` e volume `mysql-test-data`,
-separados do banco de desenvolvimento. Ele não é iniciado pelo `docker compose up`
-normal.
+Para os testes locais, use o MySQL/MariaDB já em execução no XAMPP e configure um banco dedicado, por exemplo `promosys_test`.
 
 ```bash
-docker compose --profile test up -d mysql-test
 cp .env.test.example .env.test
+# Ajuste .env.test para a porta e o usuário configurados no XAMPP.
+# Exemplo: DB_HOST=127.0.0.1, DB_PORT=3306, DB_USER=root, DB_PASSWORD=
+
+npm run test:db:create
 node --env-file=.env.test src/database/migrate.js
 npm run test:points
 ```
@@ -207,18 +219,9 @@ npm run test:points
 `npm run test:points` executa o teste de integração de crédito concorrente e
 idempotente. O teste cria e remove apenas os próprios dados no banco `promosys_test`.
 
-Para parar o serviço sem remover os dados do volume:
+O arquivo `.env.test` é local e ignorado pelo Git. No XAMPP, você pode usar o mesmo servidor MySQL do desenvolvimento, apenas com um banco separado para testes.
 
-```bash
-docker compose --profile test stop mysql-test
-```
-
-O arquivo `.env.test` é local e ignorado pelo Git. As credenciais de exemplo
-destinam-se apenas ao container local de testes.
-
-No XAMPP, inicie o MySQL/MariaDB e ajuste `DB_HOST`, `DB_PORT`, `DB_USER`,
-`DB_PASSWORD` e `DB_NAME` no `.env` ou `.env.test`. Para criar o database de
-testes usando essa configuração:
+Se quiser criar as tabelas manualmente no phpMyAdmin ou no painel do XAMPP, importe o arquivo `src/database/migrations/001_init.sql` no banco desejado.
 
 ```bash
 cp .env.test.example .env.test

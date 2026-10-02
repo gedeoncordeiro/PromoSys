@@ -28,6 +28,15 @@ export async function obterPorCpf(request, reply) {
   return reply.status(200).send({ data: cliente });
 }
 
+/** GET /clientes/export */
+export async function exportarCsv(request, reply) {
+  const csv = await clienteService.exportarCsv();
+  return reply
+    .header('Content-Type', 'text/csv; charset=utf-8')
+    .header('Content-Disposition', 'attachment; filename="clientes.csv"')
+    .send(csv);
+}
+
 /** PATCH /clientes/:id */
 export async function atualizar(request, reply) {
   const cliente = await clienteService.atualizar(

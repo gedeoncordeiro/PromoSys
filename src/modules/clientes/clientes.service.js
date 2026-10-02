@@ -89,6 +89,39 @@ export async function listar(filtros) {
   };
 }
 
+function escaparCsv(valor) {
+  const texto = String(valor ?? '').replace(/\r?\n/g, ' ').replace(/"/g, '""');
+  return `"${texto}"`;
+}
+
+export async function exportarCsv() {
+  const { itens } = await repositorio.listar({ limit: 5000, offset: 0 });
+  const clientes = itens.map(repositorio.mapearCliente);
+
+  const cabecalho = ['nome', 'cpf', 'email', 'telefone', 'cidade', 'uf', 'pontosSaldo', 'nivel', 'ativo', 'ultimaVisitaEm', 'unidadeCadastroNome'];
+  const linhas = [cabecalho.join(',')];
+
+  for (const cliente of clientes) {
+    const linha = [
+      cliente?.nome,
+      cliente?.cpf,
+      cliente?.email,
+      cliente?.telefone,
+      cliente?.cidade,
+      cliente?.uf,
+      cliente?.pontosSaldo,
+      cliente?.nivel,
+      cliente?.ativo ? 'true' : 'false',
+      cliente?.ultimaVisitaEm ?? '',
+      cliente?.unidadeCadastroNome ?? '',
+    ].map(escaparCsv).join(',');
+
+    linhas.push(linha);
+  }
+
+  return linhas.join('\n');
+}
+
 export async function atualizar(clienteId, dados, contexto = {}) {
   const anterior = await repositorio.buscarPorId(clienteId);
   if (!anterior) throw new NotFoundError('Cliente não encontrado.', { clienteId });

@@ -70,6 +70,19 @@ export default async function clientesRoutes(app) {
   );
 
   app.get(
+    '/export',
+    {
+      preHandler: [app.authenticate, app.authorize(PERFIS_LEITURA)],
+      schema: {
+        tags: ['Clientes'],
+        summary: 'Exporta a base ativa de clientes em CSV',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    controller.exportarCsv,
+  );
+
+  app.get(
     '/:id',
     {
       preHandler: [app.authenticate, app.authorize(PERFIS_LEITURA)],
