@@ -29,11 +29,13 @@ test('crédito concorrente com mesmo documento fiscal é idempotente', { skip: !
   t.after(async () => {
     try {
       if (ids.clienteId) {
+        // Comparação VARCHAR x BIGINT é numérica: `CAST(id AS CHAR)` faz o
+        // MariaDB 10.4 abortar com "Illegal mix of collations".
         await db.execute(
           `DELETE FROM audit_log
             WHERE entidade = 'transacoes_pontos'
               AND entidade_id IN (
-                SELECT CAST(id AS CHAR) FROM transacoes_pontos WHERE cliente_id = ?
+                SELECT id FROM transacoes_pontos WHERE cliente_id = ?
               )`,
           [ids.clienteId],
         );

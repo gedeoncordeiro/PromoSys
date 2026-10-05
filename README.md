@@ -82,11 +82,39 @@ caixa externo.
 - `GET /api/v1/clientes`: inclui filtros por nível, unidade de cadastro, cidade, UF, faixa de pontos e ordenação.
 - `GET /api/v1/resgates`: inclui busca por código/cliente/recompensa e intervalo de datas; perfis de loja ficam limitados à própria unidade.
 
+### Conciliação de saldos
+
+`clientes.pontos_saldo` é um **cache** materializado (leitura O(1) no balcão); a
+fonte da verdade é `SUM(lotes_pontos.pontos_disponiveis)`. O job compara os dois
+lados, aponta os clientes fora de sincronia e, se pedido, reconstrói o cache.
+
+```bash
+npm run conciliar                  # relatório (somente leitura)
+npm run conciliar -- --corrigir    # reconstrói o saldo a partir dos lotes
+npm run conciliar -- --json        # saída em JSON (BI / painel de operação)
+npm run conciliar -- --limite=500  # quantos divergentes analisar (padrão 200)
+```
+
+Cada divergência é classificada como **saldo inflado** (cache acima dos lotes: a
+loja mostra pontos que não existem) ou **defasado** (cache abaixo dos lotes:
+existem pontos legítimos que o cliente não vê). A correção roda em transação com
+a linha do cliente bloqueada, grava um `AJUSTE` no livro razão e deixa
+`SALDO_CONCILIADO` no `audit_log` — nenhuma alteração acontece sem `--corrigir`.
+
+Código de saída, pensado para cron/alerta: `0` tudo em sincronia (ou corrigido),
+`1` sobrou divergência, `2` uso incorreto das flags.
+
+```cron
+0 3 * * *  cd /opt/promosys && node --env-file=.env src/jobs/expirar-pontos.js >> logs/jobs.log 2>&1
+30 3 * * * cd /opt/promosys && node --env-file=.env src/jobs/conciliar-saldos.js >> logs/jobs.log 2>&1
+```
+
 ### Verificação rápida
 
 ```bash
 curl http://localhost:3333/health/live
 npm test -- --test-reporter=spec
+npm run conciliar
 npm run build --prefix frontend
 ```
 
@@ -133,7 +161,7 @@ PromoSys/
     ├── modules/                  # fatia vertical por domínio
     │   ├── auth/                 # login, refresh, logout, me
     │   ├── clientes/             # cadastro, busca por CPF, listagem paginada
-    │   ├── pontos/               # regras, crédito, estorno, ajuste, extrato, saldo
+    │   ├── pontos/               # regras, crédito, estorno, ajuste, extrato, saldo, conciliação
     │   ├── recompensas/          # catálogo, resgate, entrega
     │   └── health/               # /health/live e /health/ready
     │       └── <modulo>/
@@ -150,8 +178,10 @@ PromoSys/
     │   ├── migrations/001_init.sql
     │   └── seeds/001_dados_iniciais.sql
     ├── jobs/
-    │   └── expirar-pontos.js     # expiração diária de lotes de pontos
+    │   ├── expirar-pontos.js     # expiração diária de lotes de pontos
+    │   └── conciliar-saldos.js   # conciliação cache × lotes (relatório/correção)
     └── utils/
+        ├── cli.js                # leitura/validação das flags dos jobs
         ├── cpf.js                # validação/normalização de CPF
         ├── date.js               # datas ISO (UTC) para JSON e SQL
         ├── pagination.js         # limit/offset + metadados
@@ -161,6 +191,9 @@ PromoSys/
         ├── token.js              # assinatura JWT, refresh opaco, códigos
         └── zod-helpers.js        # booleanos, id, cpf, data (schemas reusáveis)
 ```
+
+As decisões de arquitetura, as invariantes do domínio, o modelo de concorrência e
+o guia para contribuir estão em [`docs/arquitetura.md`](docs/arquitetura.md).
 
 ---
 
@@ -226,22 +259,18 @@ cp .env.test.example .env.test
 npm run test:db:create
 node --env-file=.env.test src/database/migrate.js
 npm run test:points
+npm run test:conciliacao
 ```
 
 `npm run test:points` executa o teste de integração de crédito concorrente e
-idempotente. O teste cria e remove apenas os próprios dados no banco `promosys_test`.
+idempotente. `npm run test:conciliacao` cobre as regras puras da conciliação e o
+ciclo detectar → corrigir → revalidar. Os testes de integração só rodam com
+`PROMOSYS_POINT_TESTS=1` (já definido no `.env.test.example`); sem isso, `npm test`
+roda apenas o que não depende de banco. Cada teste cria e remove somente os
+próprios dados no banco `promosys_test`.
 
-O arquivo `.env.test` é local e ignorado pelo Git. No XAMPP, você pode usar o mesmo servidor MySQL do desenvolvimento, apenas com um banco separado para testes.
-
-Se quiser criar as tabelas manualmente no phpMyAdmin ou no painel do XAMPP, importe o arquivo `src/database/migrations/001_init.sql` no banco desejado.
-
-```bash
-cp .env.test.example .env.test
-# Ajuste .env.test para a porta e o usuário configurados no XAMPP.
-npm run test:db:create
-node --env-file=.env.test src/database/migrate.js
-npm run test:points
-```
+O arquivo `.env.test` é local e ignorado pelo Git. No XAMPP, você pode usar o mesmo
+servidor MySQL do desenvolvimento, apenas com um banco separado para testes.
 
 O usuário configurado precisa ter permissão `CREATE DATABASE` para criar o
 schema. Em seguida, precisa de permissões para criar tabelas e executar as
@@ -270,9 +299,12 @@ Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 | `npm run seed` | popula dados de desenvolvimento |
 | `npm run test:db:create` | cria o database definido em `.env.test`, se ainda não existir |
 | `npm run pontos:expirar` | expira lotes vencidos (agende no cron) |
+| `npm run conciliar` | concilia `pontos_saldo` × lotes; `-- --corrigir` reconstrói o cache (agende no cron) |
 | `npm run lint` / `lint:fix` | ESLint (flat config) |
 | `npm test` | `node:test` |
 | `npm run test:api` | testes HTTP via `app.inject()` (não exige MySQL) |
+| `npm run test:points` | integração do crédito concorrente/idempotente (exige MySQL) |
+| `npm run test:conciliacao` | regras puras + conciliação de saldos (exige MySQL) |
 | `npm run perf:http` | benchmark HTTP com Autocannon |
 
 ### Benchmark HTTP
@@ -384,8 +416,7 @@ Códigos estáveis para o front tratar sem parsear texto:
 
 ## Próximos passos sugeridos
 
-1. Testes de integração com `node:test` + `app.inject()` e MySQL efêmero.
-2. Redis para cache de catálogo e rate limit distribuído (hoje é in-memory, por instância).
-3. Outbox/webhook para notificar o cliente no WhatsApp a cada crédito.
-4. Relatórios analíticos (BI) lendo o razão `transacoes_pontos`.
-5. Job de conciliação diária: `SUM(lotes_pontos.pontos_disponiveis) == clientes.pontos_saldo`.
+1. Redis para cache de catálogo e rate limit distribuído (hoje é in-memory, por instância).
+2. Outbox/webhook para notificar o cliente no WhatsApp a cada crédito.
+3. Relatórios analíticos (BI) lendo o razão `transacoes_pontos`.
+4. App do cliente (extrato e resgates) reaproveitando a API existente.

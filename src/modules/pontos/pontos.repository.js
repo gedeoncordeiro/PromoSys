@@ -211,6 +211,110 @@ export function bloquearLotePorId(loteId, executor) {
   );
 }
 
+// --- Conciliação de saldos (integridade do cache) ---------------------------
+
+/**
+ * `clientes.pontos_saldo` é um CACHE materializado; a fonte da verdade é
+ * SUM(lotes_pontos.pontos_disponiveis). A subquery agrega os lotes por cliente
+ * (uma linha por cliente, inclusive quem não tem lote — via LEFT JOIN) e o
+ * WHERE deixa passar apenas as linhas em que os dois valores divergem.
+ */
+const CONCILIACAO_FROM = `
+  FROM clientes c
+  LEFT JOIN (
+        SELECT cliente_id, SUM(pontos_disponiveis) AS pontos_lotes
+          FROM lotes_pontos
+         GROUP BY cliente_id
+       ) lp ON lp.cliente_id = c.id`;
+
+const CONCILIACAO_WHERE = 'WHERE COALESCE(lp.pontos_lotes, 0) <> c.pontos_saldo';
+
+/**
+ * Clientes com saldo dessincronizado, do maior desvio para o menor.
+ * Leitura pura: nenhuma escrita acontece aqui.
+ */
+export function listarDivergenciasDeSaldo({ limit, offset }, executor) {
+  return db.query(
+    `SELECT c.id                           AS cliente_id,
+            c.cpf,
+            c.nome,
+            c.ativo,
+            c.pontos_saldo                 AS saldo_materializado,
+            COALESCE(lp.pontos_lotes, 0)   AS saldo_lotes,
+            COALESCE(lp.pontos_lotes, 0) - c.pontos_saldo AS diferenca
+       ${CONCILIACAO_FROM}
+       ${CONCILIACAO_WHERE}
+      ORDER BY ABS(COALESCE(lp.pontos_lotes, 0) - c.pontos_saldo) DESC, c.id ASC
+      ${limitOffsetSql(limit, offset)}`,
+    [],
+    executor,
+  );
+}
+
+/** Total de clientes divergentes (paginado no relatório, contado exato aqui). */
+export function contarDivergenciasDeSaldo(executor) {
+  return db.queryOne(`SELECT COUNT(*) AS total ${CONCILIACAO_FROM} ${CONCILIACAO_WHERE}`, [], executor);
+}
+
+/**
+ * Agregados da divergência em uma única consulta (evita varrer a tabela no
+ * Node). `GREATEST(x, 0)` separa o que falta do que sobra em cada lado.
+ */
+export function resumirDivergenciasDeSaldo(executor) {
+  return db.queryOne(
+    `SELECT COUNT(*) AS clientes,
+            COALESCE(SUM(CASE WHEN COALESCE(lp.pontos_lotes, 0) < c.pontos_saldo THEN 1 ELSE 0 END), 0) AS clientes_inflados,
+            COALESCE(SUM(CASE WHEN COALESCE(lp.pontos_lotes, 0) > c.pontos_saldo THEN 1 ELSE 0 END), 0) AS clientes_defasados,
+            COALESCE(SUM(GREATEST(c.pontos_saldo - COALESCE(lp.pontos_lotes, 0), 0)), 0) AS pontos_inflados,
+            COALESCE(SUM(GREATEST(COALESCE(lp.pontos_lotes, 0) - c.pontos_saldo, 0)), 0) AS pontos_defasados
+       ${CONCILIACAO_FROM}
+       ${CONCILIACAO_WHERE}`,
+    [],
+    executor,
+  );
+}
+
+/**
+ * Lotes já vencidos e ainda com saldo — sintoma de job de expiração atrasado.
+ * Não é divergência de cache: o lote continua sendo a verdade até ser expirado.
+ */
+export function resumirLotesVencidosPendentes(executor) {
+  return db.queryOne(
+    `SELECT COUNT(*) AS lotes, COALESCE(SUM(pontos_disponiveis), 0) AS pontos
+       FROM lotes_pontos
+      WHERE pontos_disponiveis > 0 AND expira_em < CURDATE()`,
+    [],
+    executor,
+  );
+}
+
+/** Cabeçalho do relatório: volumes gerais do programa de fidelidade. */
+export function resumirBase(executor) {
+  return db.queryOne(
+    `SELECT (SELECT COUNT(*) FROM clientes)                    AS clientes,
+            (SELECT COUNT(*) FROM clientes WHERE ativo = 1)     AS clientes_ativos,
+            (SELECT COALESCE(SUM(pontos_saldo), 0) FROM clientes) AS saldo_materializado,
+            (SELECT COALESCE(SUM(pontos_disponiveis), 0) FROM lotes_pontos) AS saldo_lotes`,
+    [],
+    executor,
+  );
+}
+
+/**
+ * Soma dos lotes de um cliente — usada DENTRO da correção, já com a linha do
+ * cliente bloqueada (`FOR UPDATE`). Não precisa de lock nos lotes: a ordem
+ * cliente → lote adotada em todo o motor serializa as escritas concorrentes.
+ */
+export function somarPontosDisponiveisDoCliente(clienteId, executor) {
+  return db.queryOne(
+    `SELECT COALESCE(SUM(pontos_disponiveis), 0) AS total
+       FROM lotes_pontos
+      WHERE cliente_id = ?`,
+    [clienteId],
+    executor,
+  );
+}
+
 // --- Extrato ---------------------------------------------------------------
 
 export async function listarExtrato({ clienteId, tipo, origem, de, ate, limit, offset }, executor) {
