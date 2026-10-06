@@ -70,6 +70,25 @@ export function bloquearPorId(clienteId, executor) {
   );
 }
 
+/**
+ * Histórico de consentimentos do cliente (LGPD).
+ *
+ * A tabela é append-only: um aceite e uma posterior revogação são duas linhas,
+ * então quem decide precisa do histórico — não de "um" registro. O filtro por
+ * finalidade/aceite é feito em memória por `consentimentoWhatsapp()`, que é
+ * testável sem banco.
+ */
+export function listarConsentimentos(clienteId, executor) {
+  return db.query(
+    `SELECT id, finalidade, versao, aceito, criado_em
+       FROM consentimentos
+      WHERE cliente_id = ?
+      ORDER BY criado_em DESC, id DESC`,
+    [clienteId],
+    executor,
+  );
+}
+
 export async function listar({ busca, ativo, nivel, unidadeCadastroId, cidade, uf, pontosMin, pontosMax, ordenarPor, limit, offset }, executor) {
   const filtros = ['1 = 1'];
   const params = [];

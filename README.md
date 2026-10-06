@@ -107,7 +107,38 @@ Código de saída, pensado para cron/alerta: `0` tudo em sincronia (ou corrigido
 ```cron
 0 3 * * *  cd /opt/promosys && node --env-file=.env src/jobs/expirar-pontos.js >> logs/jobs.log 2>&1
 30 3 * * * cd /opt/promosys && node --env-file=.env src/jobs/conciliar-saldos.js >> logs/jobs.log 2>&1
+*/5 * * * * cd /opt/promosys && node --env-file=.env src/jobs/enviar-notificacoes.js >> logs/notificacoes.log 2>&1
 ```
+
+### Notificações ao cliente (outbox → WhatsApp)
+
+Avisar o cliente que ganhou pontos **não** acontece dentro da transação do
+crédito: seria uma chamada de rede segurando o lock da linha do cliente, e uma
+queda do provedor perderia o aviso. Em vez disso, o crédito grava a **intenção**
+do aviso em `notificacoes_outbox` na mesma transação (padrão *transactional
+outbox*) e um job, fora da transação, faz o envio com tentativas e backoff.
+
+```bash
+npm run notificacoes:enviar                # drena a fila (o cron chama a cada 5 min)
+npm run notificacoes:enviar -- --situacao  # retrato da fila por status
+npm run notificacoes:enviar -- --simular   # mostra o que sairia, sem gravar nada
+```
+
+- Só entra na fila cliente **com telefone válido** e **consentimento `WHATSAPP`
+  vigente** (`consentimentos`); a versão do termo aceito fica no `payload`.
+- Crédito e **estorno** geram aviso — deixar o estorno em silêncio deixaria o
+  cliente com um saldo prometido na mão.
+- Falha **5xx/408/429/timeout** reagenda com backoff exponencial (teto de 6h);
+  **4xx** cancela na hora (número inválido não melhora insistindo) e tentativas
+  esgotadas também cancelam. Cada item carrega tentativas e último erro.
+- `WHATSAPP_PROVEDOR=log` registra a mensagem sem sair para a rede (dev);
+  `http` faz `POST` JSON no `WHATSAPP_API_URL`. Em produção o boot rejeita
+  `log`, para não haver fila "entregue" que nunca chegou ao cliente.
+- Canal desligado (`NOTIFICACOES_HABILITADAS=false`, padrão) = nenhum aviso é
+  enfileirado; o motor de pontos funciona igual.
+
+Código de saída do job: `0` nada a entregar · `1` sobraram itens recuperáveis
+(alerta) · `2` uso incorreto das flags.
 
 ### Verificação rápida
 
@@ -163,6 +194,8 @@ PromoSys/
     │   ├── clientes/             # cadastro, busca por CPF, listagem paginada
     │   ├── pontos/               # regras, crédito, estorno, ajuste, extrato, saldo, conciliação
     │   ├── recompensas/          # catálogo, resgate, entrega
+    │   ├── relatorios/           # financeiro, pontos por cliente, desempenho por unidade
+    │   ├── notificacoes/         # outbox → WhatsApp (regras, repository, service, cliente do provedor)
     │   └── health/               # /health/live e /health/ready
     │       └── <modulo>/
     │           ├── *.routes.js       # rotas + schemas + RBAC
@@ -176,10 +209,12 @@ PromoSys/
     │   ├── migrate.js            # runner de migrações (checksum + _migrations)
     │   ├── seed.js               # dados de dev + usuários com hash bcrypt
     │   ├── migrations/001_init.sql
+    │   ├── migrations/002_outbox_notificacoes.sql
     │   └── seeds/001_dados_iniciais.sql
     ├── jobs/
     │   ├── expirar-pontos.js     # expiração diária de lotes de pontos
-    │   └── conciliar-saldos.js   # conciliação cache × lotes (relatório/correção)
+    │   ├── conciliar-saldos.js   # conciliação cache × lotes (relatório/correção)
+    │   └── enviar-notificacoes.js # envia a outbox de avisos (backoff + retry)
     └── utils/
         ├── cli.js                # leitura/validação das flags dos jobs
         ├── cpf.js                # validação/normalização de CPF
@@ -264,10 +299,12 @@ npm run test:conciliacao
 
 `npm run test:points` executa o teste de integração de crédito concorrente e
 idempotente. `npm run test:conciliacao` cobre as regras puras da conciliação e o
-ciclo detectar → corrigir → revalidar. Os testes de integração só rodam com
-`PROMOSYS_POINT_TESTS=1` (já definido no `.env.test.example`); sem isso, `npm test`
-roda apenas o que não depende de banco. Cada teste cria e remove somente os
-próprios dados no banco `promosys_test`.
+ciclo detectar → corrigir → revalidar. `npm run test:notificacoes` cobre a
+outbox de avisos (enfileirar no crédito, enviar, reagendar, desistir) usando um
+provedor falso — nenhuma mensagem sai para a internet. Os testes de integração só
+rodam com `PROMOSYS_POINT_TESTS=1` (já definido no `.env.test.example`); sem isso,
+`npm test` roda apenas o que não depende de banco. Cada teste cria e remove
+somente os próprios dados no banco `promosys_test`.
 
 O arquivo `.env.test` é local e ignorado pelo Git. No XAMPP, você pode usar o mesmo
 servidor MySQL do desenvolvimento, apenas com um banco separado para testes.
@@ -300,11 +337,13 @@ Credenciais criadas pelo seed (troque em qualquer ambiente compartilhado):
 | `npm run test:db:create` | cria o database definido em `.env.test`, se ainda não existir |
 | `npm run pontos:expirar` | expira lotes vencidos (agende no cron) |
 | `npm run conciliar` | concilia `pontos_saldo` × lotes; `-- --corrigir` reconstrói o cache (agende no cron) |
+| `npm run notificacoes:enviar` | envia a outbox de avisos; `-- --situacao` mostra a fila, `-- --simular` não grava nada |
 | `npm run lint` / `lint:fix` | ESLint (flat config) |
 | `npm test` | `node:test` |
 | `npm run test:api` | testes HTTP via `app.inject()` (não exige MySQL) |
 | `npm run test:points` | integração do crédito concorrente/idempotente (exige MySQL) |
 | `npm run test:conciliacao` | regras puras + conciliação de saldos (exige MySQL) |
+| `npm run test:notificacoes` | outbox de avisos ponta a ponta, com provedor falso (exige MySQL) |
 | `npm run perf:http` | benchmark HTTP com Autocannon |
 
 ### Benchmark HTTP
@@ -398,6 +437,9 @@ Códigos estáveis para o front tratar sem parsear texto:
 - SQL sempre parametrizado (`execute`), `multipleStatements` desligado no pool,
   whitelist de colunas nos updates dinâmicos.
 - `audit_log` registra toda operação sensível (quem, o quê, quando, de onde).
+- Aviso ao cliente (WhatsApp) só sai com **consentimento LGPD vigente** e o
+  telefone aparece mascarado em log/relatório; a credencial do provedor vive só
+  em variável de ambiente — nunca em código, resposta HTTP ou log.
 
 ## Performance em destaque
 
@@ -417,6 +459,6 @@ Códigos estáveis para o front tratar sem parsear texto:
 ## Próximos passos sugeridos
 
 1. Redis para cache de catálogo e rate limit distribuído (hoje é in-memory, por instância).
-2. Outbox/webhook para notificar o cliente no WhatsApp a cada crédito.
+2. Webhook de entrada do provedor para status de entrega ("lida" / "falhou no WhatsApp").
 3. Relatórios analíticos (BI) lendo o razão `transacoes_pontos`.
 4. App do cliente (extrato e resgates) reaproveitando a API existente.

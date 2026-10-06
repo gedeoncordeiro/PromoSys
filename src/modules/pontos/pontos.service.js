@@ -11,6 +11,7 @@
 import { db } from '../../core/database/pool.js';
 import * as repositorio from './pontos.repository.js';
 import * as clientesRepositorio from '../clientes/clientes.repository.js';
+import * as notificacoes from '../notificacoes/notificacoes.service.js';
 import { registrarAuditoria } from '../../core/audit.js';
 import {
   BusinessRuleError,
@@ -195,6 +196,22 @@ export async function registrarCompra(dados, contexto = {}) {
       conexao,
     );
 
+    // Outbox: grava a INTENÇÃO do aviso na mesma transação do crédito (padrão
+    // transactional outbox). O envio fica para o job — aqui não há chamada de rede
+    // e, se o provedor cair, o aviso não se perde.
+    const notificacao = await notificacoes.enfileirarCredito(
+      {
+        cliente,
+        transacaoId,
+        pontos,
+        saldoApos,
+        valorCompra: valor,
+        documentoFiscal,
+        unidadeId,
+      },
+      conexao,
+    );
+
     return {
       jaProcessado: false,
       transacaoId,
@@ -202,6 +219,7 @@ export async function registrarCompra(dados, contexto = {}) {
       saldoApos,
       expiraEm: paraDataIso(expiraEm),
       regra: repositorio.mapearRegra(regra),
+      notificacao,
     };
   });
 }
@@ -276,11 +294,26 @@ export async function estornar({ transacaoId, motivo = null }, contexto = {}) {
       conexao,
     );
 
+    // Avisar o crédito e ficar calado no estorno deixaria o cliente com o saldo
+    // prometido na mão — o aviso de estorno entra na mesma outbox.
+    const notificacao = await notificacoes.enfileirarEstorno(
+      {
+        cliente,
+        transacaoId: Number(insertId),
+        estornoDeTransacaoId: Number(transacaoId),
+        pontos,
+        saldoApos,
+        unidadeId: original.unidade_id,
+      },
+      conexao,
+    );
+
     return {
       transacaoId: Number(insertId),
       estornoDeTransacaoId: Number(transacaoId),
       pontos,
       saldoApos,
+      notificacao,
     };
   });
 }
@@ -332,7 +365,20 @@ export async function ajustarSaldo(dados, contexto = {}) {
         conexao,
       );
 
-      return { transacaoId, pontos, saldoApos, expiraEm: paraDataIso(expiraEm), tipo: TIPOS_TRANSACAO.AJUSTE };
+      // Cortesia/bonificação também é crédito: o cliente recebe o mesmo aviso.
+      const notificacao = await notificacoes.enfileirarCredito(
+        { cliente, transacaoId, pontos, saldoApos, unidadeId: unidade },
+        conexao,
+      );
+
+      return {
+        transacaoId,
+        pontos,
+        saldoApos,
+        expiraEm: paraDataIso(expiraEm),
+        tipo: TIPOS_TRANSACAO.AJUSTE,
+        notificacao,
+      };
     }
 
     const pontosAbsolutos = Math.abs(pontos);

@@ -56,6 +56,26 @@ const variaveisAmbienteSchema = z
     // --- Limites -----------------------------------------------------------
     RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(300),
     RATE_LIMIT_WINDOW: z.string().min(1).default('1 minute'),
+
+    // --- Notificações (outbox → WhatsApp) ----------------------------------
+    // Desligado por padrão: nenhum aviso é enfileirado até o canal ser
+    // configurado e o cliente ter consentimento LGPD para WhatsApp.
+    NOTIFICACOES_HABILITADAS: booleano(false),
+    NOTIFICACOES_LOTE: z.coerce.number().int().min(1).max(500).default(100),
+    NOTIFICACOES_MAX_TENTATIVAS: z.coerce.number().int().min(1).max(15).default(8),
+    // Lease: ao reivindicar um item, o worker empurra a próxima tentativa.
+    // Cobre o tempo do envio e evita dois workers pegando a mesma linha.
+    NOTIFICACOES_LEASE_SEGUNDOS: z.coerce.number().int().min(30).default(300),
+    NOTIFICACOES_BACKOFF_BASE_SEGUNDOS: z.coerce.number().int().min(5).default(60),
+    NOTIFICACOES_BACKOFF_TETO_SEGUNDOS: z.coerce.number().int().min(60).default(21_600),
+    WHATSAPP_PROVEDOR: z.enum(['log', 'http']).default('log'),
+    WHATSAPP_API_URL: z.string().default(''),
+    WHATSAPP_API_KEY: z.string().default(''),
+    WHATSAPP_INSTANCIA: z.string().default(''),
+    WHATSAPP_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+    // Templates opcionais: vazio = usa o texto padrão do módulo de regras.
+    WHATSAPP_TEMPLATE_CREDITO: z.string().default(''),
+    WHATSAPP_TEMPLATE_ESTORNO: z.string().default(''),
   })
   .superRefine((valores, ctx) => {
     if (valores.NODE_ENV === 'production') {
@@ -102,6 +122,35 @@ const variaveisAmbienteSchema = z
         code: z.ZodIssueCode.custom,
         path: ['DB_MAX_IDLE'],
         message: 'DB_MAX_IDLE não pode ser maior que DB_CONNECTION_LIMIT.',
+      });
+    }
+
+    if (valores.NOTIFICACOES_BACKOFF_TETO_SEGUNDOS < valores.NOTIFICACOES_BACKOFF_BASE_SEGUNDOS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['NOTIFICACOES_BACKOFF_TETO_SEGUNDOS'],
+        message: 'O teto do backoff não pode ser menor que a base.',
+      });
+    }
+
+    if (valores.NOTIFICACOES_HABILITADAS && valores.WHATSAPP_PROVEDOR === 'http' && !valores.WHATSAPP_API_URL.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WHATSAPP_API_URL'],
+        message: 'Com NOTIFICACOES_HABILITADAS=true e provedor http, informe WHATSAPP_API_URL.',
+      });
+    }
+
+    if (
+      valores.NODE_ENV === 'production' &&
+      valores.NOTIFICACOES_HABILITADAS &&
+      valores.WHATSAPP_PROVEDOR === 'log'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WHATSAPP_PROVEDOR'],
+        message:
+          'O provedor "log" apenas registra a mensagem — em produção use WHATSAPP_PROVEDOR=http.',
       });
     }
   });

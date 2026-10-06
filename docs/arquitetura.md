@@ -66,6 +66,8 @@ Quebrar qualquer item abaixo é bug crítico, não "detalhe":
 6. Ordem de lock: **cliente → lote**, sempre. É o que evita deadlock entre dois
    PDVs mexendo no mesmo cliente.
 7. A unidade do operador vem **da sessão**, nunca do corpo da requisição.
+8. Nenhuma chamada de rede acontece dentro de uma transação: o aviso ao cliente
+   nasce na outbox (`notificacoes_outbox`) e sai por job (§7).
 
 A invariante 1 é verificável a qualquer momento:
 
@@ -98,7 +100,75 @@ npm run conciliar -- --corrigir
 Regra geral: **a idempotência vive no banco**. Reenviar a requisição é normal
 (rede de loja oscila); o segundo envio tem que ser inofensivo.
 
-## 7. Contrato HTTP
+## 7. Notificações: outbox transacional
+
+Avisar o cliente no WhatsApp **não pode** ser feito dentro da transação que
+credita pontos. Se fosse, teríamos os três problemas clássicos de integração:
+
+- o lock da linha do cliente ficaria preso durante uma chamada de rede (o PDV
+  do outro caixa espera);
+- se o provedor caísse, o aviso sumiria para sempre;
+- se o MySQL commitasse e a rede falhasse depois, o aviso ficaria "meio feito".
+
+A solução é o padrão **transactional outbox**:
+
+```mermaid
+sequenceDiagram
+  participant PDV
+  participant API
+  participant DB as MySQL
+  participant Job
+  participant WPP as WhatsApp
+
+  PDV->>API: POST /pontos/compras
+  activate API
+  API->>DB: BEGIN
+  API->>DB: INSERT transacoes_pontos
+  API->>DB: INSERT lotes_pontos
+  API->>DB: UPDATE clientes (saldo + nivel)
+  API->>DB: INSERT notificacoes_outbox (PENDENTE)
+  API->>DB: COMMIT
+  deactivate API
+  API-->>PDV: 201 (pontos creditados)
+
+  Job->>DB: SELECT fila (vencidos)
+  Job->>DB: UPDATE tentativas+1 e lease (reivindica)
+  Job->>WPP: POST mensagem
+  alt sucesso
+    Job->>DB: UPDATE status=ENVIADA
+  else falha retentavel
+    Job->>DB: UPDATE status=FALHA, proxima_tentativa_em
+  else falha definitiva
+    Job->>DB: UPDATE status=CANCELADA
+  end
+```
+
+Decisões que sustentam isso:
+
+| Decisão | Por quê |
+| --- | --- |
+| O aviso é gravado **na mesma transação** do crédito | commit atômico: ou existem os dois, ou nenhum |
+| `enfileirar*` nunca lança | problema de aviso não pode derrubar o crédito do balcão; vira log |
+| `uk_outbox_transacao (transacao_id, tipo, canal)` | reenvio da NFC-e / retry do estorno não duplica aviso |
+| Envio **fora** de transação, com *lease* | nenhum lock de banco é mantido durante HTTP |
+| Backoff exponencial com teto | provedor fora do ar volta sozinho; o teto evita fila "morta" por dias |
+| 4xx (400/401) → `CANCELADA` | número inválido/credencial errada não melhora insistindo |
+| 5xx/408/429/timeout → `FALHA` e reagenda | instabilidade é passageira |
+| LGPD: só enfileira com telefone válido **e** consentimento `WHATSAPP` vigente | aviso ao cliente é tratamento de dado pessoal |
+| O `payload` guarda a versão do termo aceito | permite provar a base legal do envio depois |
+
+O crédito **não** depende do aviso: o canal pode estar desligado
+(`NOTIFICACOES_HABILITADAS=false`) e a fila simplesmente fica vazia.
+
+Operação:
+
+```bash
+npm run notificacoes:enviar               # drena a fila (cron a cada 5 min)
+npm run notificacoes:enviar -- --situacao # retrato da fila
+npm run notificacoes:enviar -- --simular  # mostra o que sairia, sem gravar nada
+```
+
+## 8. Contrato HTTP
 
 Sucesso: `{ data, meta? }` — `meta` traz `total/limit/offset/page/pages/hasNext`.
 Erro: `{ error: { code, message, details? }, requestId }`.
@@ -111,7 +181,7 @@ Códigos estáveis (o front nunca deve parsear texto de mensagem):
 A hierarquia em `core/errors/app-error.js` mapeia cada erro para o status HTTP;
 o handler global é o único lugar que monta o corpo de erro.
 
-## 8. Segurança
+## 9. Segurança
 
 - **Fail fast no boot**: segredo curto, CORS `*` ou Swagger ligado em produção
   impedem o processo de subir (`config/env.js`).
@@ -125,19 +195,28 @@ o handler global é o único lugar que monta o corpo de erro.
   unidade (`authorizeUnidade`). Operador só credita na própria loja.
 - **Logs**: Pino com redação de campos sensíveis; corpo de requisição de PDV é
   pequeno (limite de 1 MiB).
+- **LGPD nas notificações**: só entra na fila cliente com telefone válido **e**
+  consentimento `WHATSAPP` vigente; a versão do termo vai junto no `payload`.
+  Telefone aparece mascarado (`+5511****4321`) em log e relatório.
+- **Credenciais de integração**: `WHATSAPP_API_KEY` só existe em variável de
+  ambiente, nunca em código, resposta HTTP ou log — o texto do erro do provedor
+  passa por `higienizarErro`, que mascara o próprio token se ele vier ecoado.
+  Em produção, `WHATSAPP_PROVEDOR=log` é rejeitado no boot por não entregar nada.
 
-## 9. Operação (jobs)
+## 10. Operação (jobs)
 
 | Job | Comando | Frequência sugerida | Efeito |
 | --- | --- | --- | --- |
 | Expiração de pontos | `npm run pontos:expirar` | diário, 03:00 | zera lotes vencidos, gera `EXPIRACAO` no razão |
 | Conciliação de saldos | `npm run conciliar` | diário, 03:30 | **relatório** de cache × lotes |
 | Conciliação (correção) | `npm run conciliar -- --corrigir` | sob demanda | reconstrói `pontos_saldo` a partir dos lotes |
+| Notificações (outbox) | `npm run notificacoes:enviar` | a cada 5 min | envia os avisos pendentes, com backoff |
+| Notificações (retrato) | `npm run notificacoes:enviar -- --situacao` | sob demanda | fila por status, sem alterar nada |
 
 Contrato de saída dos jobs: `0` = tudo certo · `1` = encontrou problema (o cron
 transforma isso em alerta) · `2` = uso incorreto das flags.
 
-## 10. Testes
+## 11. Testes
 
 Três camadas, todas com `node:test` (sem framework de terceiros):
 
@@ -147,12 +226,14 @@ Três camadas, todas com `node:test` (sem framework de terceiros):
 | `tests/api.test.js` | não (usa `app.inject()`) | `PROMOSYS_API_TESTS=1` (`npm run test:api`) | contratos HTTP, health, erros, auth |
 | `tests/points.integration.test.js` | sim | `PROMOSYS_POINT_TESTS=1` (`npm run test:points`) | crédito concorrente e idempotente |
 | `tests/conciliation.test.js` | bloco 1 não / bloco 2 sim | `npm run test:conciliacao` | regras puras + conciliação real |
+| `tests/notificacoes.test.js` | não | `npm test` | elegibilidade LGPD, mensagem, backoff, classificação de falha, cliente HTTP com `fetch` injetado |
+| `tests/notificacoes.integration.test.js` | sim | `PROMOSYS_POINT_TESTS=1` (`npm run test:notificacoes`) | outbox ponta a ponta: enfileira, envia, reagenda, cancela e estorna |
 
 Os testes de integração são **gated por variável de ambiente** de propósito:
 `npm test` roda em qualquer máquina (inclusive sem banco) e nunca falha "por
 falta de MySQL". Rodar a suíte completa exige o MySQL do XAMPP no ar.
 
-## 11. Pegadinhas do banco (aprendidas na prática)
+## 12. Pegadinhas do banco (aprendidas na prática)
 
 - **Collation**: o banco usa `utf8mb4_unicode_ci`. Comparar uma coluna
   `VARCHAR` com `CAST(x AS CHAR)` (que vem com a collation da conexão) aborta
@@ -167,7 +248,7 @@ falta de MySQL". Rodar a suíte completa exige o MySQL do XAMPP no ar.
 - **Fuso**: o driver usa `timezone: 'Z'` e a sessão `SET time_zone = '+00:00'`.
   Conversão para America/Sao_Paulo é responsabilidade da apresentação.
 
-## 12. Guia de contribuição
+## 13. Guia de contribuição
 
 Ao adicionar um módulo (ex.: `campanhas`):
 
@@ -184,17 +265,18 @@ Ao adicionar um módulo (ex.: `campanhas`):
 8. Atualize o README (endpoints) e, se mexeu em invariante, este documento.
 
 Definition of done do projeto: `npm run lint`, `npm test`, `npm run test:api`,
-`npm run test:points`, `npm run test:conciliacao` e
+`npm run test:points`, `npm run test:conciliacao`, `npm run test:notificacoes` e
 `npm run build --prefix frontend` — todos verdes.
 
-## 13. Roadmap
+## 14. Roadmap
 
 Feito: base do programa de fidelidade (auth, clientes, pontos, recompensas),
-relatórios/filtros, expiração de lotes e conciliação de saldos.
+relatórios/filtros, expiração de lotes, conciliação de saldos e notificação ao
+cliente por outbox (§7 — crédito e estorno).
 
 Pendente (sem ordem comprometida):
 
 1. Redis para cache de catálogo e rate limit distribuído (hoje é in-memory, por instância).
-2. Outbox/webhook para avisar o cliente no WhatsApp a cada crédito.
+2. Webhook de entrada do provedor para status de entrega ("lida" / "falhou no WhatsApp").
 3. Relatórios analíticos (BI) lendo o razão `transacoes_pontos`.
 4. App do cliente (consulta de extrato e resgates) reaproveitando a API.
